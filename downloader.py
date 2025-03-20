@@ -5,8 +5,8 @@ import aiohttp
 import os
 import re
 
-# beatmap_base_url = "https://beatconnect.io/b/{}"
-beatmap_base_url = "https://api.nerinyan.moe/d/{}"
+beatmap_base_url = "https://beatconnect.io/b/{}"
+# beatmap_base_url = "https://api.nerinyan.moe/d/{}"
 # beatmap_base_url = "https://osu.direct/api/d/{}"
 # beatmap_base_url = "https://catboy.best/d/{}"
 # beatmap_base_url = "https://osu.ppy.sh/beatmapsets/{}/download"

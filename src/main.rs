@@ -1,5 +1,5 @@
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
-// #![windows_subsystem = "windows"]
+// #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
+#![windows_subsystem = "windows"]
 #![allow(rustdoc::missing_crate_level_docs)] // it's an example
 
 use eframe::egui;
@@ -9,12 +9,12 @@ use serde::Deserialize;
 use serde_yaml;
 use std::collections::HashSet;
 use std::fs;
-use std::sync::{Arc, RwLock};
-use std::time::Duration;
-
 use std::io::Write;
+use std::process::Command;
 use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::{Arc, RwLock};
 use std::thread;
+use std::time::Duration;
 use tokio::runtime::Runtime;
 
 #[derive(Deserialize, Debug)]
@@ -22,6 +22,7 @@ struct Config {
     client_id: u64,
     client_secret: String,
     songs_path: String,
+    number_of_fetch: u32,
 }
 
 fn read_config_from_yaml(file_path: &str) -> Result<Config, Box<dyn std::error::Error>> {
@@ -53,7 +54,12 @@ fn main() -> Result<()> {
             // This gives us image support:
             egui_extras::install_image_loaders(&cc.egui_ctx);
 
-            Ok(BeatmapDownloaderApp::new(runtime, osu, config.songs_path))
+            Ok(BeatmapDownloaderApp::new(
+                runtime,
+                osu,
+                config.songs_path,
+                config.number_of_fetch,
+            ))
         }),
     )
     .map_err(|e| eyre!("error occurs: {:?}", e))
@@ -67,15 +73,16 @@ struct BeatmapDownloaderApp {
     tx_control: Sender<bool>,
     rx_update: Receiver<HashSet<u32>>,
     is_fetching: bool,
+    is_download: bool,
 }
 
 impl BeatmapDownloaderApp {
-    fn new(runtime: Runtime, osu: Osu, songs_path: String) -> Box<Self> {
+    fn new(runtime: Runtime, osu: Osu, songs_path: String, number_of_fetch: u32) -> Box<Self> {
         let (tx_update, rx_update) = mpsc::channel::<HashSet<u32>>();
         let (tx_control, rx_control) = mpsc::channel::<bool>();
         let local_songs = Arc::new(RwLock::new(HashSet::<u32>::new()));
         let local_songs_clone = local_songs.clone();
-        let number_of_fetch_songs = Arc::new(RwLock::<u32>::new(500));
+        let number_of_fetch_songs = Arc::new(RwLock::<u32>::new(number_of_fetch));
         let number_of_fetch_songs_clone = number_of_fetch_songs.clone();
         // Spawn the background thread
         thread::spawn(move || {
@@ -97,6 +104,7 @@ impl BeatmapDownloaderApp {
             tx_control,
             rx_update,
             is_fetching: false,
+            is_download: false,
         };
         app.load_songs_from_local();
 
@@ -144,6 +152,24 @@ impl BeatmapDownloaderApp {
             }
             // Sleep to simulate work and avoid busy-waiting
             thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    fn download_beatmaps(&self) -> String {
+        // Run a Python script as a subprocess
+        let output = Command::new("poetry")
+            .arg("run") // Path to your Python script
+            .arg("python")
+            .arg("downloader.py")
+            .output() // Execute the command and capture output
+            .expect("Failed to execute Python script");
+
+        if output.status.success() {
+            // Collect and return the standard output of the Python script
+            String::from_utf8_lossy(&output.stdout).to_string()
+        } else {
+            // Collect and return the standard error if the script fails
+            String::from_utf8_lossy(&output.stderr).to_string()
         }
     }
 
@@ -241,11 +267,21 @@ impl eframe::App for BeatmapDownloaderApp {
             let status = if self.is_fetching { "loading" } else { "idle" };
             ui.label(format!("Status: {}", status));
             if ui.button("Find new beatmaps").clicked() {
+                self.is_download = false;
                 self.find_new_songs()
             }
-            if ui.button("Save to file").clicked() {
-                self.save_to_file()
-            }
+            // Create a column layout with 2 columns
+            ui.columns(12, |columns| {
+                // First column
+                if columns[0].button("Download").clicked() {
+                    self.save_to_file();
+                    self.download_beatmaps();
+                    self.load_songs_from_local();
+                    self.is_download = true;
+                }
+                let result = if self.is_download { "Finish" } else { "Ready" };
+                columns[1].label(result);
+            });
 
             self.list_new_songs(ui);
         });
