@@ -66,6 +66,7 @@ struct BeatmapDownloaderApp {
     new_songs: HashSet<u32>,
     tx_control: Sender<bool>,
     rx_update: Receiver<HashSet<u32>>,
+    is_fetching: bool,
 }
 
 impl BeatmapDownloaderApp {
@@ -95,6 +96,7 @@ impl BeatmapDownloaderApp {
             new_songs: HashSet::new(),
             tx_control,
             rx_update,
+            is_fetching: false,
         };
         app.load_songs_from_local();
 
@@ -174,6 +176,7 @@ impl BeatmapDownloaderApp {
     fn list_new_songs(&mut self, ui: &mut egui::Ui) {
         if let Ok(new_songs) = self.rx_update.try_recv() {
             // println!("receive song {:?}", new_songs);
+            self.is_fetching = false;
             self.new_songs = new_songs;
         }
 
@@ -195,8 +198,11 @@ impl BeatmapDownloaderApp {
             });
     }
 
-    fn find_new_songs(&self) {
-        let _ = self.tx_control.send(true);
+    fn find_new_songs(&mut self) {
+        if !self.is_fetching {
+            self.is_fetching = true;
+            let _ = self.tx_control.send(true);
+        }
     }
 
     fn save_to_file(&self) {
@@ -232,7 +238,8 @@ impl eframe::App for BeatmapDownloaderApp {
                 "Number of Local songs '{}'",
                 self.local_songs.read().unwrap().len()
             ));
-
+            let status = if self.is_fetching { "loading" } else { "idle" };
+            ui.label(format!("Status: {}", status));
             if ui.button("Find new beatmaps").clicked() {
                 self.find_new_songs()
             }
