@@ -2,7 +2,7 @@
 // #![windows_subsystem = "windows"]
 #![allow(rustdoc::missing_crate_level_docs)] // it's an example
 
-use eframe::egui::{self, Rect};
+use eframe::egui;
 use eyre::{eyre, Result};
 use rosu_v2::prelude::*;
 use serde::Deserialize;
