@@ -1,8 +1,8 @@
-// #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
-#![windows_subsystem = "windows"]
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
+// #![windows_subsystem = "windows"]
 #![allow(rustdoc::missing_crate_level_docs)] // it's an example
 
-use eframe::egui;
+use eframe::egui::{self, Rect};
 use eyre::{eyre, Result};
 use rosu_v2::prelude::*;
 use serde::Deserialize;
@@ -60,7 +60,7 @@ fn main() -> Result<()> {
 }
 
 struct BeatmapDownloaderApp {
-    age: u32,
+    number_of_fetch_songs: Arc<RwLock<u32>>,
     songs_path: String,
     local_songs: Arc<RwLock<HashSet<u32>>>,
     new_songs: HashSet<u32>,
@@ -74,13 +74,22 @@ impl BeatmapDownloaderApp {
         let (tx_control, rx_control) = mpsc::channel::<bool>();
         let local_songs = Arc::new(RwLock::new(HashSet::<u32>::new()));
         let local_songs_clone = local_songs.clone();
+        let number_of_fetch_songs = Arc::new(RwLock::<u32>::new(500));
+        let number_of_fetch_songs_clone = number_of_fetch_songs.clone();
         // Spawn the background thread
         thread::spawn(move || {
-            Self::background_process(runtime, osu, rx_control, tx_update, local_songs_clone);
+            Self::background_process(
+                runtime,
+                osu,
+                rx_control,
+                tx_update,
+                local_songs_clone,
+                number_of_fetch_songs_clone,
+            );
         });
 
         let mut app = Self {
-            age: 42,
+            number_of_fetch_songs: number_of_fetch_songs,
             songs_path: songs_path,
             local_songs: local_songs,
             new_songs: HashSet::new(),
@@ -99,6 +108,7 @@ impl BeatmapDownloaderApp {
         rx: Receiver<bool>,
         tx: Sender<HashSet<u32>>,
         local_songs: Arc<RwLock<HashSet<u32>>>,
+        number_of_fetch_songs: Arc<RwLock<u32>>,
     ) {
         loop {
             // Check for incoming commands
@@ -112,7 +122,9 @@ impl BeatmapDownloaderApp {
                             .status(Some(RankStatus::Ranked)),
                     )
                     .unwrap();
-                for _ in 1..20 {
+                let n: u32 = *number_of_fetch_songs.read().unwrap() / 50; // copy value
+                println!("{}", n);
+                for _ in 1..=n {
                     if !result.has_more() {
                         break;
                     }
@@ -204,7 +216,14 @@ impl eframe::App for BeatmapDownloaderApp {
                 ui.text_edit_singleline(&mut self.songs_path)
                     .labelled_by(songs_path_label.id);
             });
-            ui.add(egui::Slider::new(&mut self.age, 0..=120).text("age"));
+
+            let mut number_of_fetch_songs = *self.number_of_fetch_songs.read().unwrap();
+            ui.add(
+                egui::Slider::new(&mut number_of_fetch_songs, 50..=1500)
+                    .text("Number of fetch songs"),
+            );
+            // Manually round the value to the nearest step of 50
+            *self.number_of_fetch_songs.write().unwrap() = (number_of_fetch_songs / 50) * 50;
             if ui.button("Reload local songs").clicked() {
                 self.load_songs_from_local();
             }
