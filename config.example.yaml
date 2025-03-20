@@ -1,0 +1,4 @@
+client_id: 1 # Client ID
+client_secret: "SECRET HERE" # Client Secret
+songs_path: "PATH_TO_YOUR_SONGS" # Your songs path
+number_of_fetch: 50 # Number of fetch songs
