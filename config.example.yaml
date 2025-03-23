@@ -2,3 +2,10 @@ client_id: 1 # Client ID
 client_secret: "SECRET HERE" # Client Secret
 songs_path: "PATH_TO_YOUR_SONGS" # Your songs path
 number_of_fetch: 50 # Number of fetch songs
+selected_server: nerinyan
+server:
+  beatconnect: "https://beatconnect.io/b/{beatmap_id}"
+  nerinyan: "https://api.nerinyan.moe/d/{beatmap_id}"
+  osu_direct: "https://osu.direct/api/d/{beatmap_id}"
+  catboy: "https://catboy.best/d/{beatmap_id}"
+  osu_ppy: "https://osu.ppy.sh/beatmapsets/{beatmap_id}/download"

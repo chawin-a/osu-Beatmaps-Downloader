@@ -18,3 +18,5 @@ env_logger = { version = "0.10", default-features = false, features = [
 ] }
 egui_extras = "0.31.1"
 eyre = "0.6.12"
+strfmt = "0.2.4"
+reqwest = "0.12.15"
