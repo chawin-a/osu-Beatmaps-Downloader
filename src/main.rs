@@ -10,7 +10,7 @@ use serde_yaml;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::Write;
-use std::process::Command;
+// use std::process::Command;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, RwLock};
 use std::thread;
@@ -214,23 +214,23 @@ impl BeatmapDownloaderApp {
         }
     }
 
-    fn download_beatmaps(&self) -> String {
-        // Run a Python script as a subprocess
-        let output = Command::new("poetry")
-            .arg("run") // Path to your Python script
-            .arg("python")
-            .arg("downloader.py")
-            .output() // Execute the command and capture output
-            .expect("Failed to execute Python script");
+    // fn download_beatmaps(&self) -> String {
+    //     // Run a Python script as a subprocess
+    //     let output = Command::new("poetry")
+    //         .arg("run") // Path to your Python script
+    //         .arg("python")
+    //         .arg("downloader.py")
+    //         .output() // Execute the command and capture output
+    //         .expect("Failed to execute Python script");
 
-        if output.status.success() {
-            // Collect and return the standard output of the Python script
-            String::from_utf8_lossy(&output.stdout).to_string()
-        } else {
-            // Collect and return the standard error if the script fails
-            String::from_utf8_lossy(&output.stderr).to_string()
-        }
-    }
+    //     if output.status.success() {
+    //         // Collect and return the standard output of the Python script
+    //         String::from_utf8_lossy(&output.stdout).to_string()
+    //     } else {
+    //         // Collect and return the standard error if the script fails
+    //         String::from_utf8_lossy(&output.stderr).to_string()
+    //     }
+    // }
 
     fn load_songs_from_local(&mut self) {
         let entries = fs::read_dir(&self.songs_path).unwrap();
@@ -315,12 +315,12 @@ impl BeatmapDownloaderApp {
         }
     }
 
-    fn save_to_file(&self) {
-        let mut file = fs::File::create("output").unwrap(); // Create (or overwrite) a file
-        for value in self.new_songs.iter() {
-            writeln!(file, "{}", value).unwrap(); // Write the value followed by a newline
-        }
-    }
+    // fn save_to_file(&self) {
+    //     let mut file = fs::File::create("output").unwrap(); // Create (or overwrite) a file
+    //     for value in self.new_songs.iter() {
+    //         writeln!(file, "{}", value).unwrap(); // Write the value followed by a newline
+    //     }
+    // }
 
     fn download_v2(&mut self) {
         if !self.is_download {
@@ -338,7 +338,8 @@ impl BeatmapDownloaderApp {
 
                     let progress_rw = percentage.read().unwrap();
                     let progress = progress_rw.get(song).unwrap();
-                    runtime.block_on(download_file(&url, song.to_string(), progress.clone()));
+                    let _ =
+                        runtime.block_on(download_file(&url, song.to_string(), progress.clone()));
                 }
             });
         }
