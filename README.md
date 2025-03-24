@@ -2,8 +2,7 @@
 Detect and download new songs
 
 # Prerequisites
-1. python3 + poetry
-2. rust
+1. rust
 
 # Get Started
 1. `make build`
