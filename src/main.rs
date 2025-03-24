@@ -2,15 +2,17 @@
 // #![windows_subsystem = "windows"]
 #![allow(rustdoc::missing_crate_level_docs)] // it's an example
 
+use crossbeam::channel;
 use eframe::egui;
 use eyre::{eyre, Result};
+use reqwest::header::CONTENT_DISPOSITION;
 use rosu_v2::prelude::*;
 use serde::Deserialize;
 use serde_yaml;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::Write;
-// use std::process::Command;
+use std::path::Path;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, RwLock};
 use std::thread;
@@ -34,9 +36,13 @@ fn read_config_from_yaml(file_path: &str) -> Result<Config> {
     Ok(config)
 }
 
-async fn download_file(url: &str, filename: String, progress: Arc<RwLock<f32>>) -> Result<()> {
+async fn download_file(
+    url: &str,
+    file_path: &String,
+    default_file_name: String,
+    progress: Arc<RwLock<f32>>,
+) -> Result<()> {
     // Send a GET request to the URL
-    println!("URL {}", url);
     let client = reqwest::Client::new();
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert(
@@ -49,18 +55,34 @@ async fn download_file(url: &str, filename: String, progress: Arc<RwLock<f32>>) 
     );
     let mut response = client.get(url).headers(headers).send().await?;
 
+    let mut file_name = default_file_name; // set default file name to song
+    if let Some(content_disposition) = response.headers().get(CONTENT_DISPOSITION) {
+        // Parse the header to extract the filename
+        if let Ok(content_disposition_str) = content_disposition.to_str() {
+            if let Some(name) = content_disposition_str.split("filename=").nth(1) {
+                let name = name.trim_matches('"');
+                file_name = name.to_owned();
+            }
+        }
+    }
     // Open a file to write the content to
-    let total_size = response.content_length().unwrap_or(0) as f32;
-    let mut downloaded = 0f32;
+    let total_size = response.content_length().unwrap_or(0);
+    let mut downloaded = 0u64;
 
+    let file_path = Path::new(&file_path);
+    let dest_path = file_path.join(file_name);
     // Write the content to the file in chunks
-    let mut dest_file = std::fs::File::create(format!("Download/{}.osz", filename)).unwrap();
+    let mut dest_file = std::fs::File::create(dest_path).unwrap();
 
     while let Some(chunk) = response.chunk().await? {
-        downloaded += chunk.len() as f32;
+        downloaded += chunk.len() as u64;
 
         // Update the progress
-        let current = downloaded / total_size;
+        let current = if downloaded < total_size {
+            downloaded as f32 / total_size as f32
+        } else {
+            1.0
+        };
         let mut progress = progress.write().unwrap();
         *progress = current;
 
@@ -117,6 +139,7 @@ struct BeatmapDownloaderApp {
     rx_update: Receiver<HashSet<u32>>,
     is_fetching: bool,
     is_download: bool,
+    is_download_finish: Arc<RwLock<bool>>,
     selected_server: String,
     server: HashMap<String, String>,
     runtime: Arc<Runtime>,
@@ -160,6 +183,7 @@ impl BeatmapDownloaderApp {
             rx_update,
             is_fetching: false,
             is_download: false,
+            is_download_finish: Arc::new(RwLock::new(true)),
             selected_server: selected_server,
             server: server,
             runtime: runtime,
@@ -205,7 +229,7 @@ impl BeatmapDownloaderApp {
                     }
 
                     result = runtime.block_on(result.get_next(&osu)).unwrap().unwrap();
-                    thread::sleep(Duration::from_millis(10));
+                    thread::sleep(Duration::from_millis(1));
                 }
                 let _ = tx.send(new_songs);
             }
@@ -213,24 +237,6 @@ impl BeatmapDownloaderApp {
             thread::sleep(Duration::from_millis(10));
         }
     }
-
-    // fn download_beatmaps(&self) -> String {
-    //     // Run a Python script as a subprocess
-    //     let output = Command::new("poetry")
-    //         .arg("run") // Path to your Python script
-    //         .arg("python")
-    //         .arg("downloader.py")
-    //         .output() // Execute the command and capture output
-    //         .expect("Failed to execute Python script");
-
-    //     if output.status.success() {
-    //         // Collect and return the standard output of the Python script
-    //         String::from_utf8_lossy(&output.stdout).to_string()
-    //     } else {
-    //         // Collect and return the standard error if the script fails
-    //         String::from_utf8_lossy(&output.stderr).to_string()
-    //     }
-    // }
 
     fn load_songs_from_local(&mut self) {
         let entries = fs::read_dir(&self.songs_path).unwrap();
@@ -253,9 +259,6 @@ impl BeatmapDownloaderApp {
                 }
             }
         }
-
-        // Print all the unique song IDs
-        // println!("Unique Song IDs: {:?}", song_ids.len());
     }
 
     fn list_new_songs(&mut self, ui: &mut egui::Ui) {
@@ -263,6 +266,7 @@ impl BeatmapDownloaderApp {
             // println!("receive song {:?}", new_songs);
             self.is_fetching = false;
             self.new_songs = new_songs;
+            self.is_download = false;
             for song in self.new_songs.iter() {
                 let mut p = self.percentage.write().unwrap();
                 p.insert(*song, Arc::new(RwLock::new(0.0)));
@@ -297,9 +301,6 @@ impl BeatmapDownloaderApp {
                                             .show_percentage()
                                             .animate(true),
                                     );
-                                    // if self.percentage < 1.0 {
-                                    //     self.percentage += 0.0001;
-                                    // }
                                 }
                             }
                         })
@@ -315,32 +316,56 @@ impl BeatmapDownloaderApp {
         }
     }
 
-    // fn save_to_file(&self) {
-    //     let mut file = fs::File::create("output").unwrap(); // Create (or overwrite) a file
-    //     for value in self.new_songs.iter() {
-    //         writeln!(file, "{}", value).unwrap(); // Write the value followed by a newline
-    //     }
-    // }
-
     fn download_v2(&mut self) {
         if !self.is_download {
             self.is_download = true;
-            let runtime = self.runtime.clone();
-            let new_songs = self.new_songs.clone();
-            let percentage = self.percentage.clone();
+            {
+                //
+                let mut is_download_finish = self.is_download_finish.write().unwrap();
+                *is_download_finish = false;
+            }
             let fmt = self.server.get(&self.selected_server).unwrap().to_owned();
-            thread::spawn(move || {
-                // TODO: Download here
-                for song in new_songs.iter() {
-                    let mut params = HashMap::<String, u32>::new();
-                    params.insert("beatmap_id".to_string(), *song);
-                    let url = strfmt(&fmt, &params).unwrap();
+            let (sender, receiver) = channel::bounded::<u32>(5);
+            for _ in 1..=5 {
+                // Create 5 consumer thread
+                let runtime = self.runtime.clone();
+                let receiver = receiver.clone();
+                let fmt = fmt.clone();
+                let percentage = self.percentage.clone();
+                let songs_path = "Downloads".to_owned();
+                // let songs_path = self.songs_path.clone();
+                thread::spawn(move || {
+                    // TODO: Download here
+                    while let Ok(song) = receiver.recv() {
+                        let mut params = HashMap::<String, u32>::new();
+                        params.insert("beatmap_id".to_string(), song);
+                        let url = strfmt(&fmt, &params).unwrap();
 
-                    let progress_rw = percentage.read().unwrap();
-                    let progress = progress_rw.get(song).unwrap();
-                    let _ =
-                        runtime.block_on(download_file(&url, song.to_string(), progress.clone()));
+                        let progress_rw = percentage.read().unwrap();
+                        let progress = progress_rw.get(&song).unwrap();
+                        let _ = runtime.block_on(download_file(
+                            &url,
+                            &songs_path,
+                            format!("{}.osz", song),
+                            progress.clone(),
+                        ));
+                    }
+                });
+            }
+            let new_songs = self.new_songs.clone();
+            let is_download_finish = self.is_download_finish.clone();
+            // TODO: fix should wait until all threads are finish then update is_download_finish to "true"
+            thread::spawn(move || {
+                // Producer thread
+                for song in new_songs.iter() {
+                    sender.send(*song).unwrap();
                 }
+                drop(sender);
+                while !receiver.is_empty() {
+                    thread::sleep(Duration::from_millis(10));
+                }
+                let mut cur = is_download_finish.write().unwrap();
+                *cur = true;
             });
         }
     }
@@ -394,13 +419,13 @@ impl eframe::App for BeatmapDownloaderApp {
                 }
                 // First column
                 if columns[1].button("Download").clicked() {
-                    // self.save_to_file();
-                    // self.download_beatmaps();
-                    // self.load_songs_from_local();
-                    // self.is_download = true;
                     self.download_v2();
                 }
-                let result = if self.is_download { "Finish" } else { "Ready" };
+                let result = if *self.is_download_finish.read().unwrap() {
+                    "Finish"
+                } else {
+                    "Downloading..."
+                };
                 columns[2].label(result);
             });
 
