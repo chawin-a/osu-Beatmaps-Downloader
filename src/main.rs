@@ -1,9 +1,10 @@
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
-// #![windows_subsystem = "windows"]
+// #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
+#![windows_subsystem = "windows"]
 #![allow(rustdoc::missing_crate_level_docs)] // it's an example
 
 use crossbeam::channel;
 use eframe::egui;
+use egui::{Grid, Hyperlink};
 use eyre::{eyre, Result};
 use reqwest::header::CONTENT_DISPOSITION;
 use rosu_v2::prelude::*;
@@ -206,7 +207,6 @@ impl BeatmapDownloaderApp {
         loop {
             // Check for incoming commands
             if let Ok(_) = rx.try_recv() {
-                // println!("receive");
                 let mut new_songs = HashSet::new();
                 let mut result = runtime
                     .block_on(
@@ -216,7 +216,6 @@ impl BeatmapDownloaderApp {
                     )
                     .unwrap();
                 let n: u32 = *number_of_fetch_songs.read().unwrap() / 50; // copy value
-                println!("{}", n);
                 for _ in 1..=n {
                     if !result.has_more() {
                         break;
@@ -248,9 +247,6 @@ impl BeatmapDownloaderApp {
                 if let Some(song) = folder_name.to_str() {
                     // Check if the first element exists and print it
                     if let Some(song_id) = song.split_whitespace().next() {
-                        // if song_ids.contains(song_id) {
-                        //     println!("Duplicate song {}", song_id);
-                        // }
                         self.local_songs
                             .write()
                             .unwrap()
@@ -273,7 +269,6 @@ impl BeatmapDownloaderApp {
             }
         }
 
-        // let available_width = ui.available_width();
         // Create a box with a scrollable list of items
         egui::Frame::NONE
             .inner_margin(egui::Margin::same(20)) // Optional padding inside the box
@@ -281,30 +276,32 @@ impl BeatmapDownloaderApp {
                 // Add a scroll area to allow scrolling through the items
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     // Create a vertical layout for the list items
-                    ui.vertical(|ui| {
-                        ui.columns(3, |columns| {
+                    Grid::new("Table")
+                        .num_columns(3)
+                        .min_col_width(100.0)
+                        .max_col_width(1000.0)
+                        .show(ui, |ui| {
                             for song in self.new_songs.iter() {
-                                // ui.set_min_width(available_width);
-                                columns[0].set_width(100.0);
-                                columns[0].label(format!("{}", song));
+                                ui.set_min_width(6000.0);
+                                ui.label(format!("{}", song));
                                 let fmt = self.server.get(&self.selected_server).unwrap();
                                 let mut selected_server = HashMap::<String, u32>::new();
                                 selected_server.insert("beatmap_id".to_string(), *song);
                                 let result = strfmt(fmt, &selected_server).unwrap();
-                                columns[1].label(result);
+                                ui.add(Hyperlink::new(result));
                                 if self.is_download {
                                     let percentage_rw = self.percentage.read().unwrap();
                                     let percentage =
                                         percentage_rw.get(song).unwrap().read().unwrap();
-                                    columns[2].add(
+                                    ui.add(
                                         egui::ProgressBar::new(*percentage)
                                             .show_percentage()
                                             .animate(true),
                                     );
                                 }
+                                ui.end_row();
                             }
-                        })
-                    });
+                        });
                 });
             });
     }
@@ -326,15 +323,15 @@ impl BeatmapDownloaderApp {
             }
             let fmt = self.server.get(&self.selected_server).unwrap().to_owned();
             let (sender, receiver) = channel::bounded::<u32>(5);
+            let mut handlers = vec![];
             for _ in 1..=5 {
                 // Create 5 consumer thread
                 let runtime = self.runtime.clone();
                 let receiver = receiver.clone();
                 let fmt = fmt.clone();
                 let percentage = self.percentage.clone();
-                let songs_path = "Downloads".to_owned();
-                // let songs_path = self.songs_path.clone();
-                thread::spawn(move || {
+                let songs_path = self.songs_path.clone();
+                handlers.push(thread::spawn(move || {
                     // TODO: Download here
                     while let Ok(song) = receiver.recv() {
                         let mut params = HashMap::<String, u32>::new();
@@ -350,7 +347,7 @@ impl BeatmapDownloaderApp {
                             progress.clone(),
                         ));
                     }
-                });
+                }));
             }
             let new_songs = self.new_songs.clone();
             let is_download_finish = self.is_download_finish.clone();
@@ -361,8 +358,8 @@ impl BeatmapDownloaderApp {
                     sender.send(*song).unwrap();
                 }
                 drop(sender);
-                while !receiver.is_empty() {
-                    thread::sleep(Duration::from_millis(10));
+                for handler in handlers {
+                    handler.join().unwrap(); // Unwrap the result to handle any potential panics
                 }
                 let mut cur = is_download_finish.write().unwrap();
                 *cur = true;
