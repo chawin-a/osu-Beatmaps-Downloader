@@ -28,6 +28,7 @@ struct Config {
     songs_path: String,
     number_of_fetch: u32,
     selected_server: String,
+    number_of_simultaneous_downloads: u64,
     server: HashMap<String, String>,
 }
 
@@ -125,6 +126,7 @@ fn main() -> Result<()> {
                 config.number_of_fetch,
                 config.server,
                 config.selected_server,
+                config.number_of_simultaneous_downloads,
             ))
         }),
     )
@@ -142,6 +144,7 @@ struct BeatmapDownloaderApp {
     is_download: bool,
     is_download_finish: Arc<RwLock<bool>>,
     selected_server: String,
+    number_of_simultaneous_downloads: u64,
     server: HashMap<String, String>,
     runtime: Arc<Runtime>,
     percentage: Arc<RwLock<HashMap<u32, Arc<RwLock<f32>>>>>,
@@ -155,6 +158,7 @@ impl BeatmapDownloaderApp {
         number_of_fetch: u32,
         server: HashMap<String, String>,
         selected_server: String,
+        number_of_simultaneous_downloads: u64,
     ) -> Box<Self> {
         let (tx_update, rx_update) = mpsc::channel::<HashSet<u32>>();
         let (tx_control, rx_control) = mpsc::channel::<bool>();
@@ -189,6 +193,7 @@ impl BeatmapDownloaderApp {
             server: server,
             runtime: runtime,
             percentage: Arc::new(RwLock::new(HashMap::<u32, Arc<RwLock<f32>>>::new())),
+            number_of_simultaneous_downloads,
         };
         app.load_songs_from_local();
 
@@ -324,7 +329,7 @@ impl BeatmapDownloaderApp {
             let fmt = self.server.get(&self.selected_server).unwrap().to_owned();
             let (sender, receiver) = channel::bounded::<u32>(5);
             let mut handlers = vec![];
-            for _ in 1..=5 {
+            for _ in 1..=self.number_of_simultaneous_downloads {
                 // Create 5 consumer thread
                 let runtime = self.runtime.clone();
                 let receiver = receiver.clone();
@@ -376,6 +381,14 @@ impl eframe::App for BeatmapDownloaderApp {
                 let songs_path_label = ui.label("Songs path: ");
                 ui.text_edit_singleline(&mut self.songs_path)
                     .labelled_by(songs_path_label.id);
+            });
+
+            ui.horizontal(|ui| {
+                let simulteneous_downloads = ui.label("Simultaneous downloads: ");
+                ui.add(egui::DragValue::new(
+                    &mut self.number_of_simultaneous_downloads,
+                ))
+                .labelled_by(simulteneous_downloads.id);
             });
 
             let mut number_of_fetch_songs = *self.number_of_fetch_songs.read().unwrap();

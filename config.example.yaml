@@ -3,6 +3,7 @@ client_secret: "SECRET HERE" # Client Secret
 songs_path: "PATH_TO_YOUR_SONGS" # Your songs path
 number_of_fetch: 50 # Number of fetch songs
 selected_server: nerinyan
+number_of_simultaneous_downloads: 5
 server:
   beatconnect: "https://beatconnect.io/b/{beatmap_id}"
   nerinyan: "https://api.nerinyan.moe/d/{beatmap_id}"
