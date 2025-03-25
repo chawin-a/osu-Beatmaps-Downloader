@@ -395,7 +395,7 @@ impl eframe::App for BeatmapDownloaderApp {
             ));
             let status = if self.is_fetching { "loading" } else { "idle" };
             ui.label(format!("Status: {}", status));
-
+            ui.label(format!("Found {} songs", self.new_songs.len()));
             let options = self.server.keys().cloned().collect::<Vec<String>>();
             egui::ComboBox::from_label("Select an Option")
                 .selected_text(self.selected_server.clone())
