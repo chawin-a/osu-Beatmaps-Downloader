@@ -7,8 +7,6 @@ edition = "2021"
 
 [dependencies]
 eframe = "0.31.1"
-
-rosu-v2 = { git = "https://github.com/MaxOhn/rosu-v2", branch = "lazer" }
 serde = "1.0.219"
 serde_yaml = "0.9.34"
 tokio = { version = "1.44.1", features = ["full", "rt", "rt-multi-thread"] }
@@ -21,3 +19,4 @@ eyre = "0.6.12"
 strfmt = "0.2.4"
 reqwest = { version = "0.12.15", features = ["blocking"] }
 crossbeam = "0.8.4"
+rosu-v2 = "0.10.0"
