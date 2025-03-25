@@ -1,3 +1,3 @@
 build:
-	cargo build
-	cp "target\debug\downloader.exe" "."
+	cargo build --release
+	cp "target\release\downloader.exe" ".\release\osu!-Beatmaps-Downloader.exe"
