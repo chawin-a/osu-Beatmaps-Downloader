@@ -6,7 +6,7 @@ use eframe::egui;
 use eyre::{eyre, Result};
 use rosu_v2::prelude::*;
 use serde_yaml;
-use std::{io::Read, sync::Arc};
+use std::sync::Arc;
 
 mod downloader;
 mod settings;
