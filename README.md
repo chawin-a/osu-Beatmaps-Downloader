@@ -1,6 +1,12 @@
 # osu-Beatmaps-Downloader
 Detect and download new songs
 
+# Features
+- [x] Fetch new songs (Beatmaps that are not in your song path)
+- [x] Download multiple songs simultaneously
+- [ ] Choose rank status (loved, qualified, graveyard, wip, pending, ranked, approved)
+- [ ] Choose mode (standard, taiko, ctb, mania)
+
 # Prerequisites
 1. rust
 
