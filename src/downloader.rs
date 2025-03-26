@@ -1,9 +1,11 @@
 use crossbeam::channel;
 use eframe::egui;
 use egui::{Grid, Hyperlink};
-use eyre::Result;
+use eyre::{eyre, Result};
 use reqwest::header::CONTENT_DISPOSITION;
 use rosu_v2::prelude::*;
+use serde::de::IntoDeserializer;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::Write;
@@ -14,6 +16,52 @@ use std::thread;
 use std::time::Duration;
 use strfmt::strfmt;
 use tokio::runtime::Runtime;
+
+fn empty_string_as_none<'de, D, T>(de: D) -> Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: serde::Deserialize<'de>,
+{
+    let opt = Option::<String>::deserialize(de)?;
+    let opt = opt.as_ref().map(String::as_str);
+    match opt {
+        None | Some("") => Ok(None),
+        Some(s) => T::deserialize(s.into_deserializer()).map(Some),
+    }
+}
+#[derive(Debug, Deserialize, Serialize)]
+pub struct Beatmapset {
+    pub id: u32,
+    pub title: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct BeatmapsetSearchResult {
+    pub beatmapsets: Vec<Beatmapset>,
+    #[serde(deserialize_with = "empty_string_as_none")]
+    pub cursor_string: Option<String>,
+}
+
+pub fn search_song(cursor_string: Option<String>) -> Result<BeatmapsetSearchResult> {
+    let url = format!(
+        "https://osu.ppy.sh/beatmapsets/search?e=&c=&g=&l=&m=0&nsfw=&played=&q=&r=&sort=&s=ranked&cursor_string={}",
+        if let Some(cursor_string) = cursor_string {
+            cursor_string
+        } else {
+            "".to_owned()
+        }
+    );
+    println!("url {}", url);
+    let res = reqwest::blocking::get(url)?;
+    if res.status().is_success() {
+        let result = res
+            .json::<BeatmapsetSearchResult>()
+            .map_err(|e| eyre!("can't map to beatmapset search result struct: {}", e))?;
+        Ok(result)
+    } else {
+        Err(eyre!("Request failed with status: {}", res.status()))
+    }
+}
 pub struct BeatmapDownloaderApp {
     number_of_fetch_songs: Arc<RwLock<u32>>,
     songs_path: String,
@@ -94,28 +142,32 @@ impl BeatmapDownloaderApp {
             // Check for incoming commands
             if let Ok(_) = rx.try_recv() {
                 let mut new_songs = HashSet::new();
-                let mut result = runtime
-                    .block_on(
-                        osu.beatmapset_search()
-                            .mode(GameMode::Osu)
-                            .status(Some(RankStatus::Ranked)),
-                    )
-                    .unwrap();
+                // let mut result = runtime
+                //     .block_on(
+                //         osu.beatmapset_search()
+                //             .mode(GameMode::Osu)
+                //             .status(Some(RankStatus::Ranked)),
+                //     )
+                //     .unwrap();
+                let mut result = search_song(None).unwrap();
+                let mut m = HashSet::new();
                 let n: u32 = *number_of_fetch_songs.read().unwrap() / 50; // copy value
                 for _ in 1..=n {
-                    if !result.has_more() {
+                    if result.cursor_string.is_none() {
                         break;
                     }
 
-                    for beatmap in result.mapsets.iter() {
-                        if !local_songs.read().unwrap().contains(&beatmap.mapset_id) {
-                            new_songs.insert(beatmap.mapset_id);
+                    for beatmap in result.beatmapsets.iter() {
+                        m.insert(beatmap.id);
+                        if !local_songs.read().unwrap().contains(&beatmap.id) {
+                            new_songs.insert(beatmap.id);
                         }
                     }
 
-                    result = runtime.block_on(result.get_next(&osu)).unwrap().unwrap();
+                    result = search_song(result.cursor_string).unwrap();
                     thread::sleep(Duration::from_millis(1));
                 }
+                println!("test {}", m.len());
                 let _ = tx.send(new_songs);
             }
             // Sleep to simulate work and avoid busy-waiting
