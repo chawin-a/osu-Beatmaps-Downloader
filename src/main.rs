@@ -5,27 +5,33 @@
 use eframe::egui;
 use eyre::{eyre, Result};
 use rosu_v2::prelude::*;
-use serde_yaml;
 use std::sync::Arc;
 
+mod client;
 mod downloader;
 mod settings;
+mod utils;
 
-fn check_config_file() -> bool {
-    let config_path = std::path::Path::new("config.yaml");
-    config_path.exists()
-}
-
-fn read_config_from_yaml(file_path: &str) -> Result<settings::Config> {
-    let file = std::fs::File::open(file_path)?;
-    let config: settings::Config = serde_yaml::from_reader(file)?;
-    Ok(config)
+fn create_search_client(
+    runtime: &Arc<tokio::runtime::Runtime>,
+    config: &settings::Config,
+) -> Box<dyn client::SearchClient> {
+    match config.search_client.as_str() {
+        "nerinyan" => Box::new(client::nerinyan::NerinyanClient::new()),
+        "osu" => Box::new(client::osu::OsuClient::new()),
+        "osu_api" => Box::new(
+            runtime
+                .block_on(Osu::new(config.client_id, config.client_secret.clone()))
+                .unwrap(),
+        ),
+        _ => panic!("Unknown client type"),
+    }
 }
 
 fn main() -> Result<()> {
     env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
 
-    if !check_config_file() {
+    if !settings::check_config_file() {
         let options = eframe::NativeOptions {
             run_and_return: true,
             viewport: egui::ViewportBuilder::default().with_inner_size([320.0, 320.0]),
@@ -48,11 +54,9 @@ fn main() -> Result<()> {
             .unwrap(),
     );
 
-    let config = read_config_from_yaml("config.yaml").unwrap();
+    let config = settings::read_config_from_yaml("config.yaml").unwrap();
 
-    let osu = runtime
-        .block_on(Osu::new(config.client_id, config.client_secret))
-        .unwrap();
+    let search_client = create_search_client(&runtime, &config);
 
     let options = eframe::NativeOptions {
         run_and_return: true,
@@ -69,7 +73,7 @@ fn main() -> Result<()> {
 
             Ok(downloader::BeatmapDownloaderApp::new(
                 runtime,
-                osu,
+                search_client,
                 config.songs_path,
                 config.number_of_fetch,
                 config.server,

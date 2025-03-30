@@ -3,7 +3,6 @@ use eframe::egui;
 use egui::{Grid, Hyperlink};
 use eyre::Result;
 use reqwest::header::CONTENT_DISPOSITION;
-use rosu_v2::prelude::*;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::Write;
@@ -14,6 +13,7 @@ use std::thread;
 use std::time::Duration;
 use strfmt::strfmt;
 use tokio::runtime::Runtime;
+
 pub struct BeatmapDownloaderApp {
     number_of_fetch_songs: Arc<RwLock<u32>>,
     songs_path: String,
@@ -34,7 +34,7 @@ pub struct BeatmapDownloaderApp {
 impl BeatmapDownloaderApp {
     pub fn new(
         runtime: Arc<Runtime>,
-        osu: Osu,
+        search_client: Box<dyn crate::client::SearchClient>,
         songs_path: String,
         number_of_fetch: u32,
         server: HashMap<String, String>,
@@ -52,7 +52,7 @@ impl BeatmapDownloaderApp {
         thread::spawn(move || {
             Self::background_process(
                 runtime_clone,
-                osu,
+                search_client,
                 rx_control,
                 tx_update,
                 local_songs_clone,
@@ -84,7 +84,7 @@ impl BeatmapDownloaderApp {
     // The background process logic
     fn background_process(
         runtime: Arc<Runtime>,
-        osu: Osu,
+        search_client: Box<dyn crate::client::SearchClient>,
         rx: Receiver<bool>,
         tx: Sender<HashSet<u32>>,
         local_songs: Arc<RwLock<HashSet<u32>>>,
@@ -94,27 +94,12 @@ impl BeatmapDownloaderApp {
             // Check for incoming commands
             if let Ok(_) = rx.try_recv() {
                 let mut new_songs = HashSet::new();
-                let mut result = runtime
-                    .block_on(
-                        osu.beatmapset_search()
-                            .mode(GameMode::Osu)
-                            .status(Some(RankStatus::Ranked)),
-                    )
-                    .unwrap();
-                let n: u32 = *number_of_fetch_songs.read().unwrap() / 50; // copy value
-                for _ in 1..=n {
-                    if !result.has_more() {
-                        break;
+                let n: u32 = *number_of_fetch_songs.read().unwrap(); // copy value
+                let result = runtime.block_on(search_client.fetch_new_songs(n)).unwrap();
+                for song in result.iter() {
+                    if !local_songs.read().unwrap().contains(&song.id) {
+                        new_songs.insert(song.id);
                     }
-
-                    for beatmap in result.mapsets.iter() {
-                        if !local_songs.read().unwrap().contains(&beatmap.mapset_id) {
-                            new_songs.insert(beatmap.mapset_id);
-                        }
-                    }
-
-                    result = runtime.block_on(result.get_next(&osu)).unwrap().unwrap();
-                    thread::sleep(Duration::from_millis(1));
                 }
                 let _ = tx.send(new_songs);
             }
