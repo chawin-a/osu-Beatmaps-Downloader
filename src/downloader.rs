@@ -255,13 +255,16 @@ impl eframe::App for BeatmapDownloaderApp {
                 .labelled_by(simulteneous_downloads.id);
             });
 
-            let mut number_of_fetch_songs = *self.number_of_fetch_songs.read().unwrap();
-            ui.add(
-                egui::Slider::new(&mut number_of_fetch_songs, 50..=1500)
-                    .text("Number of fetch songs"),
-            );
+            let number_of_fetch_songs = *self.number_of_fetch_songs.read().unwrap();
+            let mut number_of_page = number_of_fetch_songs / 50;
+            ui.horizontal(|ui| {
+                let number_of_page_label = ui.label("Number of page");
+                ui.add(egui::DragValue::new(&mut number_of_page))
+                    .labelled_by(number_of_page_label.id);
+                ui.label(format!("{} songs", number_of_fetch_songs));
+            });
             // Manually round the value to the nearest step of 50
-            *self.number_of_fetch_songs.write().unwrap() = (number_of_fetch_songs / 50) * 50;
+            *self.number_of_fetch_songs.write().unwrap() = number_of_page * 50;
             if ui.button("Reload local songs").clicked() {
                 self.load_songs_from_local();
             }
