@@ -31,10 +31,15 @@ fn create_search_client(
 fn main() -> Result<()> {
     env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
 
+    let icon = eframe::icon_data::from_png_bytes(include_bytes!("img/raw_icon.png"))
+        .expect("The icon data must be valid");
+
     if !settings::check_config_file() {
         let options = eframe::NativeOptions {
             run_and_return: true,
-            viewport: egui::ViewportBuilder::default().with_inner_size([320.0, 320.0]),
+            viewport: egui::ViewportBuilder::default()
+                .with_inner_size([320.0, 320.0])
+                .with_icon(icon.clone()),
             ..Default::default()
         };
 
@@ -60,7 +65,9 @@ fn main() -> Result<()> {
 
     let options = eframe::NativeOptions {
         run_and_return: true,
-        viewport: egui::ViewportBuilder::default().with_inner_size([1280.0, 720.0]),
+        viewport: egui::ViewportBuilder::default()
+            .with_inner_size([1280.0, 720.0])
+            .with_icon(icon),
         ..Default::default()
     };
 
