@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2021"
 build = "build.rs"
 
+# [[bin]]
+# name = "osu-Beatmap-Downloader"
+# path = "src/main.rs"
+
 [target.'cfg(windows)'.build-dependencies]
 winres = "0.1.12"
 
