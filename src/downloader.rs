@@ -13,6 +13,7 @@ use std::thread;
 use std::time::Duration;
 use strfmt::strfmt;
 use tokio::runtime::Runtime;
+use urlencoding;
 
 pub struct BeatmapDownloaderApp {
     number_of_fetch_songs: Arc<RwLock<u32>>,
@@ -336,7 +337,7 @@ async fn download_file(
         if let Ok(content_disposition_str) = content_disposition.to_str() {
             if let Some(name) = content_disposition_str.split("filename=").nth(1) {
                 let name = name.trim_matches('"');
-                file_name = name.to_owned();
+                file_name = urlencoding::decode(name)?.to_string();
             }
         }
     }

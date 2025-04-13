@@ -992,6 +992,7 @@ dependencies = [
  "serde_yaml",
  "strfmt",
  "tokio",
+ "urlencoding",
  "winres",
 ]
 
