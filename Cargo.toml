@@ -33,3 +33,4 @@ rfd = "0.15.3"
 serde_with = { version = "3.12.0", features = ["json"] }
 async-trait = "0.1.88"
 urlencoding = "2.1.3"
+thiserror = "2.0.12"

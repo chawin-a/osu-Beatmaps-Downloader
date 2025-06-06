@@ -991,6 +991,7 @@ dependencies = [
  "serde_with",
  "serde_yaml",
  "strfmt",
+ "thiserror 2.0.12",
  "tokio",
  "urlencoding",
  "winres",
