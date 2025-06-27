@@ -7,6 +7,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::Write;
 use std::path::Path;
+use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, RwLock};
 use std::thread;
@@ -109,21 +110,21 @@ impl BeatmapDownloaderApp {
         }
     }
 
+    fn extract_song_id(path: &PathBuf) -> Option<u32> {
+        path.file_name()
+            .and_then(|f| f.to_str())
+            .and_then(|song| song.split_whitespace().next())
+            .and_then(|song_id| song_id.parse().ok())
+    }
+
     fn load_songs_from_local(&mut self) {
         let entries = fs::read_dir(&self.songs_path).unwrap();
 
         for entry in entries {
             let entry = entry.unwrap();
             let path = entry.path();
-            if let Some(folder_name) = path.file_name() {
-                if let Some(song) = folder_name.to_str() {
-                    if let Some(song_id) = song.split_whitespace().next() {
-                        self.local_songs
-                            .write()
-                            .unwrap()
-                            .insert(song_id.to_string().parse().unwrap());
-                    }
-                }
+            if let Some(song_id) = Self::extract_song_id(&path) {
+                self.local_songs.write().unwrap().insert(song_id);
             }
         }
     }
