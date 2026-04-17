@@ -347,9 +347,11 @@ async fn download_file(
     let mut downloaded = 0u64;
 
     let file_path = Path::new(&file_path);
+    let tmp_file_name = file_name.clone() + ".download";
     let dest_path = file_path.join(file_name);
+    let tmp_dest_path = file_path.join(tmp_file_name);
     // Write the content to the file in chunks
-    let mut dest_file = std::fs::File::create(dest_path).unwrap();
+    let mut dest_file = std::fs::File::create(&tmp_dest_path).unwrap();
 
     while let Some(chunk) = response.chunk().await? {
         downloaded += chunk.len() as u64;
@@ -366,5 +368,6 @@ async fn download_file(
         // Write the chunk to the file
         dest_file.write_all(&chunk).unwrap();
     }
+    fs::rename(tmp_dest_path, dest_path)?;
     Ok(())
 }
